@@ -26,9 +26,4 @@ public class AuthController {
         String jwtToken = authService.loginUser(request);
         return ResponseEntity.status(HttpStatus.OK).body(jwtToken);
     }
-
-    @GetMapping("/show-stats")
-    private ResponseEntity<String> showStats(){
-        return ResponseEntity.status(HttpStatus.OK).body("Hello these are your stats");
-    }
 }
