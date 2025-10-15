@@ -10,14 +10,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.catalina.User;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Objects;
 
 @Component
@@ -25,35 +24,58 @@ import java.util.Objects;
 @Slf4j
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private final JwtAuthService authService;
+    private final JwtAuthService jwtAuthService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        log.info("Entered JWT AuthFilter");
+        log.info("Entered JWT Authentication Filer");
+        validateJwt(request);
+        filterChain.doFilter(request, response);
+    }
 
-        if(Objects.isNull(header) || header.trim().isEmpty() || !header.startsWith("Bearer ")){
-            filterChain.doFilter(request, response);
+    private void validateJwt(HttpServletRequest request){
+        log.info("Validating Authorization header");
+        String authorizationValue = request.getHeader("Authorization");
+
+        if(Objects.isNull(authorizationValue) || !authorizationValue.startsWith("Bearer ")){
+            log.info("Authorization header is either empty, or is not of type Bearer");
+            log.info("Authorization header value: {}", authorizationValue);
             return;
         }
 
-        String jwtToken = header.substring(7);
+        String token = authorizationValue.substring(7).trim();
 
-        log.info("Jwt Token value is: {}", jwtToken);
+        log.debug("JWT value: {}", token);
 
-        if(!jwtToken.isEmpty() && authService.validateJwt(jwtToken) && SecurityContextHolder.getContext().getAuthentication() == null){
-            log.info("Token is validated. And authentication object is null");
+        if(SecurityContextHolder.getContext().getAuthentication() == null && jwtAuthService.isTokenValid(token) && !jwtAuthService.isTokenExpired(token)){
+            Map<String, Object> map = jwtAuthService.getUserDetails(token);
+
             Accounts account = Accounts.builder()
-                    .username("Sayak Bose")
-                    .role(Roles.USER)
+                    .username((String) map.get("Subject"))
+                    .role(getRoles((String)map.get("Role")))
                     .build();
+            UserPrincipal principal = new UserPrincipal(account);
+            UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
+                    principal, null, principal.getAuthorities()
+            );
 
-            UserPrincipal userPrincipal = new UserPrincipal(account);
-            UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken =
-                    new UsernamePasswordAuthenticationToken(userPrincipal, null, userPrincipal.getAuthorities());
-
-            SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
+            SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+            log.info("JWT successfully validated and Security Context updated");
         }
-        filterChain.doFilter(request, response);
+        else{
+            log.info("Improper JWT token found");
+        }
+    }
+
+    private Roles getRoles(String role){
+        if(role.equals("USER")){
+            return Roles.USER;
+        }
+        else if(role.equals("ADMIN")){
+            return Roles.ADMIN;
+        }
+        else{
+            throw new RuntimeException("Role is invalid");
+        }
     }
 }

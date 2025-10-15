@@ -49,4 +49,8 @@ public class UserPrincipal implements UserDetails {
     public boolean isEnabled() {
         return UserDetails.super.isEnabled();
     }
+
+    public String getRole(){
+        return account.getRole().toString();
+    }
 }

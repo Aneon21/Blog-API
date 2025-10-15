@@ -9,15 +9,19 @@ import com.blog.api.repositories.AccountsRepository;
 import com.blog.api.repositories.UsersRepository;
 import com.blog.api.security.principals.UserPrincipal;
 import com.blog.api.security.services.JwtAuthService;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,11 +30,12 @@ public class AuthService {
     private final UsersRepository usersRepository;
     private final JwtAuthService jwtAuthService;
     private final AuthenticationManager authenticationManager;
+    private final BCryptPasswordEncoder passwordEncoder;
 
     public String registerUser(UserRegistrationRequest request){
         Accounts account = Accounts.builder()
                 .username(request.getUsername())
-                .password(request.getPassword())
+                .password(passwordEncoder.encode(request.getPassword()))
                 .role(Roles.USER)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -58,10 +63,26 @@ public class AuthService {
 
         if(auth.isAuthenticated()){
             UserPrincipal userPrincipal = (UserPrincipal) auth.getPrincipal();
-            return jwtAuthService.getToken(userPrincipal);
+            return jwtAuthService.getJwtToken(userPrincipal);
         }
         else{
             throw new Exception("Failure");
         }
+    }
+
+    public String refreshToken(HttpServletRequest request){
+        var cookies = request.getCookies();
+
+        if(Objects.isNull(cookies)){
+            throw new RuntimeException("No cookies present");
+        }
+
+        Optional<Cookie> cookie = Arrays.stream(cookies).filter(c -> c.getName().equals("refresh-token")).findFirst();
+
+        if(!cookie.isPresent()){
+            throw new RuntimeException("No refresh-token present");
+        }
+
+        return "Hello";
     }
 }
