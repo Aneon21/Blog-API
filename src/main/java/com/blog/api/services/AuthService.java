@@ -11,9 +11,12 @@ import com.blog.api.security.principals.UserPrincipal;
 import com.blog.api.security.services.JwtAuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +24,10 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
     private final AccountsRepository accountsRepository;
     private final UsersRepository usersRepository;
@@ -39,7 +42,7 @@ public class AuthService {
                 .role(Roles.USER)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .refreshToken("johncena")
+                .refreshToken(jwtAuthService.generateRefreshToken(request.getUsername()))
                 .build();
 
         Users user = Users.builder()
@@ -63,7 +66,8 @@ public class AuthService {
 
         if(auth.isAuthenticated()){
             UserPrincipal userPrincipal = (UserPrincipal) auth.getPrincipal();
-            return jwtAuthService.getJwtToken(userPrincipal);
+            return "JWT: " + jwtAuthService.generateJwtToken(userPrincipal) + "\n"
+                    + "Refresh: " + addRefreshTokenToDB(userPrincipal.getUsername());
         }
         else{
             throw new Exception("Failure");
@@ -71,18 +75,44 @@ public class AuthService {
     }
 
     public String refreshToken(HttpServletRequest request){
-        var cookies = request.getCookies();
+        Cookie cookie = Arrays.stream(Optional.ofNullable(request.getCookies())
+                .orElseThrow(() -> new RuntimeException("No cookies sent")))
+                .filter(c -> c.getName().equals("refresh-token"))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("No refresh token sent"));
 
-        if(Objects.isNull(cookies)){
-            throw new RuntimeException("No cookies present");
+        String bearer = request.getHeader("Authorization");
+
+        if(Objects.isNull(bearer) || !bearer.startsWith("Bearer ")){
+            throw new RuntimeException("No bearer authorization token found");
         }
 
-        Optional<Cookie> cookie = Arrays.stream(cookies).filter(c -> c.getName().equals("refresh-token")).findFirst();
+        String token = bearer.substring(7).trim();
 
-        if(!cookie.isPresent()){
-            throw new RuntimeException("No refresh-token present");
+        Accounts account = accountsRepository.findByUsername(jwtAuthService.getUsername(token)).
+                orElseThrow(() -> new UsernameNotFoundException("User does not exist"));
+
+        if(cookie.getValue().equals(account.getRefreshToken())
+                && jwtAuthService.isTokenValid(account.getRefreshToken())
+                && !jwtAuthService.isTokenExpired(account.getRefreshToken())){
+            String refreshToken = addRefreshTokenToDB(account.getUsername());
+            return jwtAuthService.generateJwtToken(new UserPrincipal(account));
         }
+        else{
+            throw new RuntimeException("Invalid refresh token sent");
+        }
+    }
 
-        return "Hello";
+    @Transactional
+    private String addRefreshTokenToDB(String username){
+        Accounts account = accountsRepository.findByUsername(username).orElseThrow(
+                () -> new UsernameNotFoundException("Username not found")
+        );
+
+        String refreshToken = jwtAuthService.generateRefreshToken(username);
+        account.setRefreshToken(refreshToken);
+        accountsRepository.save(account);
+
+        return refreshToken;
     }
 }

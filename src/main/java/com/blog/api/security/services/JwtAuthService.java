@@ -1,6 +1,5 @@
 package com.blog.api.security.services;
 
-import com.blog.api.enums.Roles;
 import com.blog.api.security.principals.UserPrincipal;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -14,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;;
 
 @Service
 public class JwtAuthService {
@@ -25,7 +23,7 @@ public class JwtAuthService {
         return Keys.hmacShaKeyFor(key.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String getJwtToken(UserPrincipal userPrincipal){
+    public String generateJwtToken(UserPrincipal userPrincipal){
         return Jwts.builder()
                 .signWith(getKey())
                 .subject(userPrincipal.getUsername())
@@ -77,5 +75,30 @@ public class JwtAuthService {
         map.put("Role", payload.get("Role"));
 
         return map;
+    }
+
+    public String generateRefreshToken(String username){
+        return Jwts.builder()
+                .subject(username)
+                .issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + 1000*60*60*24*7))
+                .signWith(getKey())
+                .compact();
+    }
+
+    public String getUsername(String token){
+        try{
+            return Jwts.parser().verifyWith(getKey())
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getSubject();
+        }
+        catch (ExpiredJwtException e){
+            return e.getClaims().getSubject();
+        }
+        catch (JwtException e){
+            throw new RuntimeException("Invalid JWT sent");
+        }
     }
 }

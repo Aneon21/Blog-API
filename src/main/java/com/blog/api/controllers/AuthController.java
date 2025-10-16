@@ -5,6 +5,7 @@ import com.blog.api.mappers.requests.UserRegistrationRequest;
 import com.blog.api.services.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
+    private final RedisTemplate<Object, Object> redisTemplate;
 
     @PostMapping("/register")
     public ResponseEntity<String> registerUser(@RequestBody UserRegistrationRequest request){
@@ -31,8 +33,6 @@ public class AuthController {
 
     @GetMapping("/refresh")
     public ResponseEntity<String> refreshToken(HttpServletRequest request){
-        authService.refreshToken(request);
-
-        return ResponseEntity.status(HttpStatus.OK).body("OK");
+        return ResponseEntity.status(HttpStatus.OK).body(authService.refreshToken(request));
     }
 }
