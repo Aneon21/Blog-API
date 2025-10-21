@@ -3,6 +3,7 @@ package com.blog.api.services;
 import com.blog.api.enums.Roles;
 import com.blog.api.mappers.requests.LoginRequest;
 import com.blog.api.mappers.requests.UserRegistrationRequest;
+import com.blog.api.mappers.responses.TokenResponse;
 import com.blog.api.models.Accounts;
 import com.blog.api.models.Users;
 import com.blog.api.repositories.AccountsRepository;
@@ -58,7 +59,7 @@ public class AuthService {
         return "User Created";
     }
 
-    public String loginUser(LoginRequest request) throws Exception{
+    public TokenResponse loginUser(LoginRequest request) throws Exception{
 
         var auth = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
@@ -66,15 +67,14 @@ public class AuthService {
 
         if(auth.isAuthenticated()){
             UserPrincipal userPrincipal = (UserPrincipal) auth.getPrincipal();
-            return "JWT: " + jwtAuthService.generateJwtToken(userPrincipal) + "\n"
-                    + "Refresh: " + addRefreshTokenToDB(userPrincipal.getUsername());
+            return new TokenResponse(jwtAuthService.generateJwtToken(userPrincipal), "10 minutes");
         }
         else{
             throw new Exception("Failure");
         }
     }
 
-    public String refreshToken(HttpServletRequest request){
+    public TokenResponse refreshToken(HttpServletRequest request){
         Cookie cookie = Arrays.stream(Optional.ofNullable(request.getCookies())
                 .orElseThrow(() -> new RuntimeException("No cookies sent")))
                 .filter(c -> c.getName().equals("refresh-token"))
@@ -96,7 +96,7 @@ public class AuthService {
                 && jwtAuthService.isTokenValid(account.getRefreshToken())
                 && !jwtAuthService.isTokenExpired(account.getRefreshToken())){
             String refreshToken = addRefreshTokenToDB(account.getUsername());
-            return jwtAuthService.generateJwtToken(new UserPrincipal(account));
+            return new TokenResponse(jwtAuthService.generateJwtToken(new UserPrincipal(account)), "10 minutes");
         }
         else{
             throw new RuntimeException("Invalid refresh token sent");
